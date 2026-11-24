@@ -1,0 +1,49 @@
+# Bygger Planwright.app og Planwright.dmg på GitHubs Mac-maskiner.
+# Kører af sig selv, når der skubbes til main (fx en ny Planwright-Mac-Kit.zip),
+# og kan også startes manuelt under Actions -> Mac app -> Run workflow.
+# Den færdige DMG lægges under Releases -> "Planwright til Mac".
+name: Mac app
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pak kittet ud
+        run: unzip -q Planwright-Mac-Kit.zip -d kit
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Test
+        working-directory: kit/Planwright
+        run: cargo test
+
+      - name: Byg Planwright.app og Planwright.dmg
+        working-directory: kit/Planwright
+        run: sh packaging/macos/build-mac-app.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Planwright-mac
+          path: kit/Planwright/dist/macos/Planwright.dmg
+
+      - name: Læg DMG'en ud som release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest kit/Planwright/dist/macos/Planwright.dmg \
+            --target "${{ github.sha }}" \
+            --title "Planwright til Mac" \
+            --notes "Hent Planwright.dmg, åbn den og træk Planwright.app over i Programmer. Første gang: højreklik på appen, vælg Åbn og bekræft (appen er ikke notariseret hos Apple). Kører på både Apple Silicon og Intel, macOS 11 eller nyere."
